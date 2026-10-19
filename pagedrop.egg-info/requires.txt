@@ -1,0 +1,5 @@
+xhtml2pdf>=0.2.17
+pypdf>=3.0.0
+
+[dev]
+pytest>=7

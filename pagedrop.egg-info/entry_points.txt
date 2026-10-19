@@ -1,0 +1,3 @@
+[console_scripts]
+pagedrop = pagedrop.cli:main
+wkhtmltopdf = pagedrop.cli:main

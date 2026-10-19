@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pagedrop"
+version = "0.1.0"
+description = "Drop-in wkhtmltopdf replacement: the same flags, a maintained pure-Python engine"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{ name = "Clawdyy", email = "intertermux@gmail.com" }]
+keywords = ["wkhtmltopdf", "html", "pdf", "converter", "reports", "invoicing", "migration"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "Programming Language :: Python :: 3",
+  "Topic :: Office/Business :: Financial",
+  "Topic :: Printing",
+  "Topic :: Text Processing :: Markup :: HTML",
+]
+dependencies = [
+  "xhtml2pdf>=0.2.17",
+  "pypdf>=3.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/intertermux-code/pagedrop"
+Source = "https://github.com/intertermux-code/pagedrop"
+Issues = "https://github.com/intertermux-code/pagedrop/issues"
+Changelog = "https://github.com/intertermux-code/pagedrop/releases"
+
+[project.scripts]
+wkhtmltopdf = "pagedrop.cli:main"
+pagedrop = "pagedrop.cli:main"
+
+[tool.setuptools]
+packages = ["pagedrop"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

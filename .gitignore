@@ -1,0 +1,32 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Local environments
+.venv/
+.venv*/
+venv/
+env/
+
+# Test and tool caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Converted output from the examples
+examples/*.pdf
+out/
