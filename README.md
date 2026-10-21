@@ -80,6 +80,9 @@ $ wkhtmltopdf --version
 wkhtmltopdf 0.1.0 (pagedrop shim, engine xhtml2pdf 0.2.26)
 ```
 
+The engine version is the `xhtml2pdf` release pip resolved for your interpreter:
+0.2.26 on Python 3.10 and newer, 0.2.17 on 3.9, because 0.2.26 needs 3.10.
+
 The version line says what it is. Scripts that grep for `0.12` need updating
 once; nothing else does.
 
@@ -127,6 +130,7 @@ difference. A conversion that succeeds prints nothing.
 | `--header-font-*`, `--footer-font-*` | name, size, colour of the band |
 | `--title` | PDF information dictionary (falls back to the document's `<title>`) |
 | `--encoding` | input decoding |
+| `--log-level` | verbosity of the engine log: none, info, error |
 | `--outline`, `--no-outline`, `--outline-depth` | PDF bookmarks from `h1`–`h6`, cut off at the depth asked for |
 | `-g, --grayscale` | RGB fills and strokes rewritten to their luma equivalent |
 | `--user-style-sheet` | CSS appended after the document's own |
@@ -134,11 +138,12 @@ difference. A conversion that succeeds prints nothing.
 | `--options-file` | extra arguments read from a file, `#` comments allowed |
 | `--log-path` | engine warnings written to a file |
 | `-q, --quiet` | suppress the shim's own notes |
-| `--print-media-type`, `--disable-smart-shrinking`, `--enable-local-file-access`, `--disable-javascript`, `--lowquality` | accepted: this engine already behaves that way |
+| `--print-media-type`, `--disable-smart-shrinking`, `--enable-local-file-access`, `--disable-javascript`, `--no-stop-slow-scripts`, `--lowquality` | accepted: this engine already behaves that way |
 | `--dpi 96`, `--zoom 1`, `--copies 1`, `--image-dpi 600`, `--image-quality 94` | accepted at wkhtmltopdf's default value, refused above it |
 
-Anything not on that list is rejected as an unknown option, which is the
-right outcome while you are grepping for stragglers.
+Anything not on that list is refused: with an explanation where the two engines
+genuinely differ, and as an unknown option where the flag does not exist at
+all. That is the right outcome while you are grepping for stragglers.
 
 ### Header and footer variables
 
@@ -199,11 +204,14 @@ page out, so when you pass `--header-html` without `--margin-top` it reserves
 15 mm and lets the band overflow if the fragment is taller. Set `--margin-top`
 explicitly for anything but a one-line header.
 
-**Tighter network rules than upstream.** Remote resources are fetched over
-plain HTTP(S) only; addresses that resolve to loopback, private or link-local
-ranges — including the cloud metadata service — are refused. That is a
-deliberate difference from wkhtmltopdf, which would happily read `file:///`
-from a page fetched over the network.
+**Tighter network rules than upstream, where the engine can enforce them.** The
+engine's resource policy fetches over plain HTTP(S) only and refuses
+destinations that resolve to loopback, private or link-local ranges — including
+the cloud metadata service. That is a deliberate difference from wkhtmltopdf,
+which would happily read `file:///` from a page fetched over the network.
+Engine releases that predate the policy cannot refuse anything, and there the
+network rules of the host apply: that is `xhtml2pdf` 0.2.17, the release
+Python 3.9 resolves, so do not convert untrusted documents on 3.9.
 
 **Single document.** No `--cover`, no `--toc` documents, no `--copies` beyond
 one, no encrypted output. Concatenate or stamp afterwards with `pypdf` if you

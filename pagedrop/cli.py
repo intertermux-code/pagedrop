@@ -29,6 +29,20 @@ VARIABLES = (
     "[month] [day] [title] [doctitle] [url] [webpage] [section] [subsection]"
 )
 
+# The engine logs under "xhtml2pdf.*", and the root logger only keeps
+# warnings, so a level of its own is needed for anything else.
+LOG_LEVELS = {
+    "none": logging.CRITICAL + 10,
+    "info": logging.INFO,
+    "error": logging.ERROR,
+}
+
+
+class _ConsoleHandler(logging.StreamHandler):
+    """The engine log on stderr, replaced on every run so it follows stderr."""
+
+    pagedrop_console = True
+
 
 def engine_version() -> str:
     try:
@@ -95,13 +109,37 @@ def help_text(prog: str) -> str:
 
 
 def _configure_logging(ns: argparse.Namespace) -> None:
-    level = logging.ERROR if getattr(ns, "quiet", None) else logging.WARNING
-    logging.getLogger("xhtml2pdf").setLevel(level)
+    levels = []
+    if getattr(ns, "quiet", None):
+        levels.append(LOG_LEVELS["error"])
+    requested = getattr(ns, "log_level", None)
+    if requested is not None:
+        name = str(requested).lower()
+        if name not in LOG_LEVELS:
+            raise ShimError(
+                f"unknown log level '{requested}', expected one of "
+                + ", ".join(LOG_LEVELS)
+            )
+        levels.append(LOG_LEVELS[name])
+
+    logger = logging.getLogger("xhtml2pdf")
+    for handler in list(logger.handlers):
+        if isinstance(handler, _ConsoleHandler):
+            logger.removeHandler(handler)
+    if levels:
+        logger.setLevel(max(levels))  # the quieter of the two wins
+        console = _ConsoleHandler(sys.stderr)
+        console.setLevel(logger.level)
+        logger.addHandler(console)
+        logger.propagate = False
+    else:
+        logger.setLevel(logging.WARNING)
+
     log_path = getattr(ns, "log_path", None)
     if log_path:
         handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
         handler.setLevel(logging.DEBUG)
-        logging.getLogger("xhtml2pdf").addHandler(handler)
+        logger.addHandler(handler)
 
 
 def _write_output(path: str, data: bytes) -> None:

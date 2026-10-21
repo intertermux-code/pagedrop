@@ -84,7 +84,7 @@ FLAGS: List[Flag] = [
     # --- global -------------------------------------------------------------
     Flag("--quiet", "Be less verbose, maintained for backwards compatibility", "global",
          short="-q", support=INHERENT),
-    Flag("--log-level", "Log level: none, info, error", "global", metavar="<level>", support=INHERENT),
+    Flag("--log-level", "Log level: none, info, error", "global", metavar="<level>"),
     Flag("--encoding", "Set the default text encoding, for input", "global", metavar="<encoding>"),
     Flag("--title", "The title of the generated pdf file", "global", metavar="<text>"),
     Flag("--dpi", "Change the dpi explicitly (default 96)", "global", metavar="<dpi>", short="-d",

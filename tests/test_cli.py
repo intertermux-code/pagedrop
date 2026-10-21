@@ -1,4 +1,5 @@
 import io
+import logging
 import re
 
 import pytest
@@ -93,3 +94,29 @@ def test_log_path_collects_the_notes(tmp_path, source):
     log = tmp_path / "convert.log"
     assert run(tmp_path, [source, tmp_path / "out.pdf", "--log-path", str(log)]) == 0
     assert log.exists()
+
+
+def test_log_level_sets_the_verbosity_of_the_engine_log(tmp_path, source, capsys):
+    logger = logging.getLogger("xhtml2pdf")
+    try:
+        assert run(tmp_path, [source, tmp_path / "out.pdf", "--log-level", "info"]) == 0
+        assert logger.level == logging.INFO
+        logger.info("engine says hello")
+        assert "engine says hello" in capsys.readouterr().err
+    finally:
+        logger.setLevel(logging.NOTSET)
+
+
+def test_log_level_none_keeps_the_engine_quiet(tmp_path, source, capsys):
+    logger = logging.getLogger("xhtml2pdf")
+    try:
+        assert run(tmp_path, [source, tmp_path / "out.pdf", "--log-level", "none"]) == 0
+        logger.error("the engine complains")
+        assert capsys.readouterr().err == ""
+    finally:
+        logger.setLevel(logging.NOTSET)
+
+
+def test_unknown_log_level_is_refused(tmp_path, source, capsys):
+    assert run(tmp_path, [source, tmp_path / "out.pdf", "--log-level", "chatty"]) == 1
+    assert "unknown log level 'chatty'" in capsys.readouterr().err
