@@ -20,7 +20,7 @@ import re
 import shlex
 import sys
 from datetime import datetime
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from . import templating
 from .errors import ShimError
@@ -205,9 +205,8 @@ FLAGS: List[Flag] = [
     Flag("--footer-font-color", "Set footer font color (default #000000)", "header-and-footer",
          metavar="<color>"),
     # --- documents ----------------------------------------------------------
-    Flag("--cover", "Add a cover document (path to html file)", "documents", metavar="<path|url>",
-         support=UNSUPPORTED,
-         limitation="cover documents are not supported in v1; convert the cover separately and concatenate"),
+    Flag("--cover", "Add a cover document, without the header or footer of the page document",
+         "documents", metavar="<path|url>"),
     Flag("--toc", "Add a table of contents document", "documents", support=UNSUPPORTED,
          limitation="table-of-contents documents are not supported in v1"),
 ]
@@ -219,6 +218,10 @@ for _flag in FLAGS:
     for _option in _flag.option_strings:
         BY_OPTION[_option] = _flag
 del _flag, _option
+
+# The flags that draw into the page margins. A cover document gets its own copy
+# of them and none from the page document, which is what makes it a cover.
+BAND_OPTIONS = frozenset(flag.dest for flag in FLAGS if flag.group == "header-and-footer")
 
 _MARGIN_UNITS = {"mm": "mm", "cm": "cm", "in": "in", "inch": "in", "pt": "pt", "px": "px"}
 
@@ -319,6 +322,55 @@ def _get(ns: argparse.Namespace, name: str) -> Optional[object]:
     return getattr(ns, name.replace("-", "_"), None)
 
 
+def _lookup_option(name: str) -> Optional[Flag]:
+    """A flag named the way a command line or an options object would name it."""
+    for candidate in (name, "--" + name, "-" + name):
+        flag = BY_OPTION.get(candidate)
+        if flag is not None:
+            return flag
+    return None
+
+
+def namespace_from_options(options: Mapping[str, object]) -> argparse.Namespace:
+    """The namespace a set of command-line flags would have produced.
+
+    Keys are the flag names spelled with or without their leading dashes, which
+    is the same shape as ``pdfkit``'s options dict and lets a conversion move
+    between the two without a translation table.
+    """
+    ns = argparse.Namespace(input=None, output=None)
+    for flag in FLAGS:
+        setattr(ns, flag.dest, None)
+    for key, value in options.items():
+        flag = _lookup_option(str(key).strip())
+        if flag is None:
+            raise ShimError(f"unrecognized option '{key}'")
+        if value is None or value is False:
+            continue
+        setattr(ns, flag.dest, True if flag.is_boolean else str(value))
+    return ns
+
+
+def without_bands(ns: argparse.Namespace) -> argparse.Namespace:
+    """The same options minus every header and footer flag: a cover's namespace."""
+    for dest in BAND_OPTIONS:
+        setattr(ns, dest, None)
+    return ns
+
+
+# The flags that name a page box. Their absence means the defaults, which a
+# document carrying its own ``@page`` should not be made to fight.
+GEOMETRY_OPTIONS = (
+    "page-size", "page-width", "page-height", "orientation",
+    "margin", "margin-top", "margin-right", "margin-bottom", "margin-left", "margin-unit",
+)
+
+
+def geometry_given(ns: argparse.Namespace) -> bool:
+    """Whether the command line named a page box, rather than leaving it to the defaults."""
+    return any(_get(ns, name) is not None for name in GEOMETRY_OPTIONS)
+
+
 def read_option(uri: str, base_dir: str, encoding: str) -> str:
     """A file named on the command line: relative to the shell first, then the document.
 
@@ -350,6 +402,8 @@ def _band(ns: argparse.Namespace, kind: str, unit: str, ctx: Dict[str, object], 
 
     spacing_value = _get(ns, f"{kind}-spacing")
     spacing = parse_length(spacing_value, unit) if spacing_value is not None else 0.0
+    if spacing < 0:
+        raise ShimError(f"option '--{kind}-spacing' cannot be negative: the band would leave its margin")
     margin_value = _get(ns, f"margin-{side_of_margin}")
     all_sides = _get(ns, "margin")
     if margin_value is not None:
@@ -382,13 +436,46 @@ def _band(ns: argparse.Namespace, kind: str, unit: str, ctx: Dict[str, object], 
     return band
 
 
-def build_job(ns: argparse.Namespace) -> Job:
-    """Translate parsed options into a render job."""
+def _check_page_box(width: float, height: float, margins: Tuple[float, float, float, float]) -> None:
+    """Refuse a page the engine cannot lay out, before it lays out anything.
+
+    A box with no room inside it does not come back as a blank page: the frame
+    geometry goes negative, ReportLab shouts about ``@frame`` definitions on
+    stderr, and the PDF it writes has content sitting outside the media box.
+    Better to name the flag that did it.
+    """
+    top, right, bottom, left = margins
+    for side, value in (("top", top), ("right", right), ("bottom", bottom), ("left", left)):
+        if value < 0:
+            raise ShimError(f"the {side} margin is negative: margins are measured inwards from the page edge")
+
+    if width <= 0 or height <= 0:
+        raise ShimError(
+            f"the page box is {width:.2f}pt x {height:.2f}pt: --page-width and --page-height must both be positive"
+        )
+    content_width, content_height = width - left - right, height - top - bottom
+    if content_width <= 0 or content_height <= 0:
+        raise ShimError(
+            f"the margins leave {content_width:.2f}pt x {content_height:.2f}pt for the content: "
+            "reduce the margins or choose a larger page"
+        )
+
+
+def build_job(ns: argparse.Namespace, document: Optional[bytes] = None) -> Job:
+    """Translate parsed options into a render job.
+
+    ``document`` is the markup when it is not something the job can read from
+    disk by itself: standard input in the CLI's case is read through
+    ``ns.input == "-"``, and the conversion service hands the body straight over.
+    """
     notes: List[str] = []
     encoding = str(_get(ns, "encoding") or "utf-8")
     unit = margin_unit(ns)
 
-    if ns.input == "-":
+    if document is not None:
+        data, source = document, str(ns.input or "<request>")
+        base_dir = _base_dir(source)
+    elif ns.input == "-":
         data, source, base_dir = sys.stdin.buffer.read(), "<stdin>", os.getcwd()
     else:
         data, source, base_dir = read_resource(ns.input, os.getcwd()), ns.input, _base_dir(ns.input)
@@ -406,6 +493,9 @@ def build_job(ns: argparse.Namespace) -> Job:
         if value is None:
             value = _get(ns, "margin")
         return parse_length(value, unit) if value is not None else DEFAULT_MARGIN
+
+    margins = (margin("margin-top"), margin("margin-right"), margin("margin-bottom"), margin("margin-left"))
+    _check_page_box(width, height, margins)
 
     ctx: Dict[str, object] = {
         "now": datetime.now().astimezone(),
@@ -427,7 +517,7 @@ def build_job(ns: argparse.Namespace) -> Job:
         base_dir=base_dir,
         page_width=width,
         page_height=height,
-        margins=(margin("margin-top"), margin("margin-right"), margin("margin-bottom"), margin("margin-left")),
+        margins=margins,
         header=_band(ns, "header", unit, ctx, notes),
         footer=_band(ns, "footer", unit, ctx, notes),
         title=_get(ns, "title"),

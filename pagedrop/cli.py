@@ -12,7 +12,7 @@ import os
 import sys
 from typing import List, Optional, Sequence
 
-from . import engine, flags
+from . import cover, engine, flags, resources, server
 from .errors import ShimError
 from .spec import Job
 
@@ -44,28 +44,42 @@ class _ConsoleHandler(logging.StreamHandler):
     pagedrop_console = True
 
 
-def engine_version() -> str:
-    try:
-        from importlib.metadata import version
-
-        return version("xhtml2pdf")
-    except Exception:  # noqa: BLE001 - the version line must never fail
-        return "unknown"
-
-
 def version_text(prog: str) -> str:
     from . import __version__
 
-    return f"{prog} {__version__} (pagedrop shim, engine xhtml2pdf {engine_version()})"
+    return f"{prog} {__version__} (pagedrop shim, engine xhtml2pdf {engine.engine_version()})"
 
 
-def help_text(prog: str) -> str:
+def synopsis(prog: str, command: Optional[str]) -> List[str]:
+    """The usage lines: all three commands, or just the one being asked about."""
+    if command == cover.KEYWORD:
+        return [
+            f"  {prog} [GLOBAL FLAG] <cover> <input> <output> [FLAG]",
+            f"  {prog} --cover <cover> <input> <output> [FLAG]",
+            "",
+            "  A flag follows the document it describes. The flags before the cover and",
+            "  the ones after the output apply to the whole run; a cover takes the page",
+            "  settings of its own document, and none of its header or footer.",
+        ]
+    return [
+        f"  {prog} [GLOBAL FLAG] [INPUT] [OUTPUT]",
+        f"  {prog} {cover.KEYWORD} [GLOBAL FLAG] <cover> <input> <output> [FLAG]",
+        f"  {prog} {server.SUBCOMMAND} [--host <address>] [--port <port>]",
+    ]
+
+
+def help_text(prog: str, command: Optional[str] = None) -> str:
+    """The help page, generated from the flag table.
+
+    ``command`` narrows the synopsis to one subcommand; the options themselves
+    are shared, so the rest of the page is the same page.
+    """
     lines: List[str] = [
         "Name",
         f"  {prog} - convert HTML documents to PDF",
         "",
         "Synopsis",
-        f"  {prog} [GLOBAL FLAG] [INPUT] [OUTPUT]",
+        *synopsis(prog, command),
         "",
         "Description",
         "  A drop-in replacement for the archived wkhtmltopdf. It takes the flags",
@@ -73,6 +87,12 @@ def help_text(prog: str) -> str:
         "  maintained print engine that installs from pip alone. Options that",
         "  cannot be honoured are refused with an explanation, never ignored.",
         "  Use '-' for INPUT or OUTPUT to read or write the document on a pipe.",
+        "",
+        "Commands",
+        "  (none)   convert one document, the wkhtmltopdf command line",
+        "  cover    convert a document with a cover page in front of it, which",
+        "           keeps its own page settings and none of the document's bands",
+        f"  serve    run as an HTTP conversion service: {server.ENDPOINTS}",
         "",
     ]
     for group in flags.GROUPS:
@@ -142,17 +162,6 @@ def _configure_logging(ns: argparse.Namespace) -> None:
         logger.addHandler(handler)
 
 
-def _write_output(path: str, data: bytes) -> None:
-    if path == "-":
-        sys.stdout.buffer.write(data)
-        sys.stdout.buffer.flush()
-        return
-    directory = os.path.dirname(os.path.abspath(path))
-    os.makedirs(directory, exist_ok=True)
-    with open(path, "wb") as handle:
-        handle.write(data)
-
-
 def report(note: str, prog: str, log_path: Optional[str] = None) -> None:
     if log_path:
         with open(log_path, "a", encoding="utf-8") as handle:
@@ -177,10 +186,12 @@ def run(argv: Sequence[str], prog: str) -> Job:
 
     _configure_logging(ns)
     flags.check_limitations(ns)
-    job = flags.build_job(ns)
-    data = engine.render(job)
-    _write_output(ns.output, data)
-    return job
+    jobs = cover.jobs_for(ns)
+    resources.write_output(ns.output, cover.render(jobs))
+
+    document = jobs[-1]
+    document.notes = [note for job in jobs for note in job.notes]
+    return document
 
 
 def _prog_name() -> str:
@@ -194,8 +205,14 @@ def _prog_name() -> str:
 
 def main(argv: Optional[Sequence[str]] = None, prog: Optional[str] = None) -> int:
     prog = prog or _prog_name()
+    argv = list(sys.argv[1:] if argv is None else argv)
     try:
-        job = run(list(sys.argv[1:] if argv is None else argv), prog)
+        if argv and argv[0] == cover.KEYWORD:
+            job = cover.run(argv[1:], prog)
+        elif argv and argv[0] == server.SUBCOMMAND:
+            return server.run(argv[1:], prog)
+        else:
+            job = run(argv, prog)
     except ShimError as error:
         sys.stderr.write(f"{prog}: {error}\n")
         return 1

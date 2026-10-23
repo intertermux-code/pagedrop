@@ -159,7 +159,6 @@ def test_user_style_sheet_is_loaded(tmp_path, page, out):
         ["--enable-javascript"],
         ["--cookie", "a", "b"],
         ["--proxy", "http://x"],
-        ["--cover", "c.html"],
         ["--toc"],
         ["--dump-outline", "o.xml"],
         ["--viewport-size", "1024x768"],

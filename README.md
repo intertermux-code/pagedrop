@@ -16,6 +16,10 @@ Installing `pagedrop` puts a `wkhtmltopdf` executable on your `PATH` (and a
 `pagedrop` alias). Every script, cron job, Makefile and `subprocess.run` call
 that shells out to `wkhtmltopdf` keeps working unchanged.
 
+Two subcommands go a step past the drop-in line: `pagedrop cover` fronts a
+document with a cover page of its own, and `pagedrop serve` keeps the converter
+resident and turns it into an HTTP service. Both are documented below.
+
 ## Why
 
 wkhtmltopdf is archived. The repository went read-only in January 2023, its
@@ -67,7 +71,8 @@ $ python3 -m pip install git+https://github.com/intertermux-code/pagedrop.git
 ```
 
 Python 3.9 or newer. The dependencies are `xhtml2pdf` (the layout engine, on
-top of ReportLab) and `pypdf` (used for `--grayscale`); both are pure Python,
+top of ReportLab) and `pypdf` (for `--grayscale`, and for joining a cover to the
+document it fronts); both are pure Python,
 so there is nothing to compile and no font or browser to fetch.
 
 If the real wkhtmltopdf is already on the machine, `PATH` decides which one
@@ -77,11 +82,12 @@ system package or put the pip `bin` directory first:
 ```console
 $ which wkhtmltopdf                      # should be your venv or ~/.local/bin
 $ wkhtmltopdf --version
-wkhtmltopdf 0.1.0 (pagedrop shim, engine xhtml2pdf 0.2.26)
+wkhtmltopdf 0.1.0 (pagedrop shim, engine xhtml2pdf 0.2.27)
 ```
 
 The engine version is the `xhtml2pdf` release pip resolved for your interpreter:
-0.2.26 on Python 3.10 and newer, 0.2.17 on 3.9, because 0.2.26 needs 3.10.
+0.2.27 on Python 3.10 and newer, 0.2.17 on 3.9, because the newer releases need
+3.10.
 
 The version line says what it is. Scripts that grep for `0.12` need updating
 once; nothing else does.
@@ -128,6 +134,7 @@ difference. A conversion that succeeds prints nothing.
 | `--header-spacing`, `--footer-spacing` | gap between the band and the content |
 | `--header-line`, `--footer-line` | rule below the header, above the footer |
 | `--header-font-*`, `--footer-font-*` | name, size, colour of the band |
+| `--cover` | a cover document in front of the page document, on its own paper and without its bands — see [Cover pages](#cover-pages) |
 | `--title` | PDF information dictionary (falls back to the document's `<title>`) |
 | `--encoding` | input decoding |
 | `--log-level` | verbosity of the engine log: none, info, error |
@@ -159,7 +166,164 @@ note on stderr: they depend on WebKit's per-page chapter tracking, which this
 engine has no equivalent of.
 
 Text given to `--header-left` and friends is HTML-escaped before it is placed,
-so a `&` or `<` in a company name cannot break the band.
+so a `&` or `<` in a company name cannot break the band. The values expanded
+into it are escaped too — a document's title, its name, and the placeholder
+`<request>` the service uses where a file name would be.
+
+Numbering is per document. A report of twelve pages says `Page 12 of 12` on its
+last page whether or not a cover was put in front of it, and `[topage]` never
+counts the cover.
+
+## Cover pages
+
+Real wkhtmltopdf has taken a cover as an object of its own, and so does this:
+
+```console
+$ wkhtmltopdf cover cover.html report.html report.pdf
+```
+
+The flat flag does the same job for a script that already names one document:
+
+```console
+$ wkhtmltopdf --cover cover.html report.html report.pdf
+```
+
+Options attach to the document they follow, which is how a cover gets its own
+paper while the report keeps its margins and bands:
+
+```console
+$ wkhtmltopdf cover cover.html --page-size A5 \
+    report.html --margin-top 25mm --header-left "ACME Corp" \
+    --footer-center "Page [page] of [topage]" \
+    report.pdf
+```
+
+The flags before the cover and the ones after the output belong to the whole
+run, because there is no document for them to attach to: `--grayscale` at the
+end of that line greys out every page of it, and a page size given out front is
+given to both documents.
+
+What "its own document" buys you:
+
+- **Its own page.** The cover is rendered on its own and joined to the report
+  with `pypdf`, so the `@page` rules in the cover's stylesheet govern it. Give
+  it an explicit `--page-size`, `--page-width`/`--page-height` or `--margin` on
+  the command line and those win instead: a page you asked for is an
+  instruction, a default is not.
+- **No running bands.** `--header-*` and `--footer-*` stay with the document
+  they were written for. Name a band in the cover's own position on the line and
+  the cover gets it.
+- **Its own numbering.** `[page]` counts the report, as above.
+- **The report's identity.** `--title` and the outline belong to the document
+  being titled; the cover only fronts it.
+
+A cover file that is not there is a clean exit 1 — `cannot read ...`, before
+anything is rendered — and no PDF is written.
+
+## Conversion service
+
+`pagedrop serve` keeps the converter resident and answers HTTP, for a pipeline
+that converts often enough to feel the interpreter and the engine import on every
+document. This one is pagedrop's own: wkhtmltopdf never had a server mode.
+
+```console
+$ pagedrop serve --port 8080
+pagedrop serve: listening on http://127.0.0.1:8080/ (GET /health, POST /convert)
+```
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /health` | JSON status: which pagedrop, which engine, how much work is in hand |
+| `POST /convert` | the PDF |
+
+```console
+$ curl -s http://127.0.0.1:8080/health
+{"status": "ok", "version": "0.1.0", "engine": "0.2.27", "converting": 0, "waiting": 0}
+$ curl -s --data-binary @invoice.html -H 'Content-Type: text/html' \
+    'http://127.0.0.1:8080/convert?margin-top=25mm&footer-center=Page%20%5Bpage%5D%20of%20%5Btopage%5D' \
+    -o invoice.pdf
+```
+
+`POST /convert` reads the document two ways:
+
+- **the body as the document.** `text/html`, `text/plain`, no `Content-Type` at
+  all, and the `application/x-www-form-urlencoded` a bare `curl -d @file` sends
+  are all taken as markup, with the options in the query string;
+- **a JSON object.** `{"html": "...", "options": {"margin-top": "25mm"},
+  "cover": "..."}`, where `html` is required and the other two are not.
+
+`options` keys are the command line's flag names with or without their leading
+dashes — the shape `pdfkit` already passes — and mean what they mean on the
+command line, including being refused when the engine cannot honour them:
+
+```console
+$ curl -s -X POST -H 'Content-Type: application/json' \
+    -d '{"html": "<h1>Q3</h1>", "options": {"page-size": "A5", "grayscale": true}, "cover": "<h1>Cover</h1>"}' \
+    http://127.0.0.1:8080/convert -o q3.pdf
+```
+
+`cover` is the cover document as markup, the same object the `cover` command
+fronts a document with. The `cover` *option* is refused: its value would name a
+file on the server's disk rather than the requester's.
+
+**Errors** are 4xx with a one-line JSON body, `{"error": "..."}`, and a stack
+trace never reaches the client. `405` carries an `Allow` header, `404` names the
+endpoints, `411` and `413` say what the request lacked, `415` says what it was
+not, `400` says what was wrong with the document or its options, and anything
+genuinely unforeseen is `500 internal server error` with its detail written to
+the service's stderr.
+
+**Concurrency** is one thread per connection with a bounded number of
+conversions in flight, `--max-concurrent` (default 4). Requests past that wait
+their turn rather than being turned away with a `503`, because a conversion is
+short and a batch of invoices wants to arrive in order anyway. `/health` reports
+the two halves of that as `converting` and `waiting`, which is what a supervisor
+watches for a wedge. Threads, not processes: xhtml2pdf and ReportLab are pure
+Python, so a second worker would not buy a second core — the bound is about
+memory, queue depth and honesty in `/health`.
+
+**Limits**: a body over `--max-body` (default 32MB) is refused before it is read,
+and a connection that stops talking is dropped after 30 seconds. Both are per
+request; nothing is kept between them.
+
+**Address and port** come from `--host`/`--port` or from `PAGEDROP_HOST` and
+`PAGEDROP_PORT`, the command line first. The default bind is the loopback
+interface, and that is load-bearing: anyone who can reach the port can hand the
+service markup and the options that read files off the disk (`--header-html` and
+friends). Run it on a network you control, behind something that authenticates,
+and do not put it on a public interface.
+
+`SIGINT` and `SIGTERM` stop it between requests: the listening socket is closed,
+the conversions in flight are answered, and the process exits 0 with a
+`stopped` line on stderr. `--verbose` logs every request as it is served.
+
+## Pagination
+
+The page model is the part of wkhtmltopdf that pipelines lean on hardest, so
+these are tested on the PDF that comes back, not on the markup that went in:
+
+- **One page is not a special case.** `[page]` and `[topage]` agree: a document
+  that fits says `Page 1 of 1`, on its only page.
+- **An empty document is still a PDF.** An empty body, no body element at all, or
+  a bare fragment with no `<html>` around it each produce one valid page. A
+  fragment is wrapped rather than dropped, which is what a `POST` of `<p>…</p>`
+  to the service relies on.
+- **Content splits mid-element and keeps counting.** A paragraph broken across a
+  page break, and a table long enough to run over several pages, carry the right
+  `Page n of N` on every page they land on, and their text survives the break.
+- **Bands are drawn on every page**, the first and the last included. There is no
+  per-page exclusion, because the engine has no notion of "first page" for a
+  margin box: a cover document is how a title page escapes the running header.
+- **A band takes room from the page it was put in.** `--margin-top`/`--margin-bottom`
+  say how much of the page the band may use, `--*-spacing` adds a gap between the
+  band and the content, and the content area shrinks to whatever is left. The
+  footer frame is measured from the bottom edge of the page inwards, so it stays
+  inside the page box at any margin.
+- **A page that cannot be laid out is refused before one is rendered.** A
+  non-positive `--page-width`/`--page-height`, a negative margin, margins that
+  leave no width or no height for the content, and a negative `--*-spacing` each
+  get their own message and exit 1, rather than a ReportLab traceback or a PDF
+  with a zero-sized box that a viewer refuses.
 
 ## Limitations, stated plainly
 
@@ -213,9 +377,12 @@ Engine releases that predate the policy cannot refuse anything, and there the
 network rules of the host apply: that is `xhtml2pdf` 0.2.17, the release
 Python 3.9 resolves, so do not convert untrusted documents on 3.9.
 
-**Single document.** No `--cover`, no `--toc` documents, no `--copies` beyond
-one, no encrypted output. Concatenate or stamp afterwards with `pypdf` if you
-need them.
+**A cover, not a booklet.** One cover document in front of one page document is
+the whole of it: no `--toc` pages, no `--copies` beyond one, no encrypted
+output. A generated table of contents needs the page numbers of a document that
+has not been laid out yet, which this engine only answers after the fact, so it
+is refused rather than approximated — build one yourself with `pypdf` if you
+need one, or write the contents page and hand it to `cover` as its own document.
 
 ## How it works
 
@@ -227,17 +394,25 @@ xhtml2pdf resolves `<pdf:pagenumber/>` at draw time and needs two passes for
 
 ```
 pagedrop/
-  cli.py         argument handling, help page, exit codes
+  cli.py         argument handling, help page, exit codes, the subcommands
   flags.py       the wkhtmltopdf flag table and the translation into a Job
+  cover.py       the cover command: two documents, rendered and joined
+  server.py      the same conversion behind HTTP, on a bounded number of threads
   spec.py        the Job and header/footer bands a set of flags describes
   templating.py  [page]-style variable expansion
   fragments.py   inlining --header-html / --footer-html documents
   engine.py      the @page / @frame document handed to xhtml2pdf
   grayscale.py   RGB -> luma rewrite of the produced content streams
-  resources.py   reading option files and fragments from disk or URL
+  resources.py   reading option files and fragments from disk, writing the PDF
   units.py       paper sizes and length units
   errors.py      the two failure kinds the CLI distinguishes
 ```
+
+A cover is not a special case of this: it is a second `Job`, rendered and
+grayscaled on its own and then appended to the document's PDF with `pypdf`,
+which is what keeps its page settings, its numbering and its bands separate
+without the engine having to know about any of that. The service is the same
+`Job` built from a request's options instead of from argv.
 
 ## Development
 
@@ -247,11 +422,17 @@ $ .venv/bin/python -m pytest
 $ .venv/bin/wkhtmltopdf examples/invoice.html out/invoice.pdf \
     --header-html examples/header.html --footer-html examples/footer.html \
     --margin-top 30mm --margin-bottom 25mm --title "2026-042"
+$ .venv/bin/wkhtmltopdf cover examples/cover.html examples/invoice.html out/pack.pdf
+$ .venv/bin/pagedrop serve --port 8080 --verbose
 ```
 
 The suite renders real PDFs and reads them back with `pypdf`: page counts,
 per-page footer numbering, margins that change pagination, metadata, outline
-entries and the absence of RGB operators after `--grayscale`.
+entries and the absence of RGB operators after `--grayscale`. The server is
+tested over HTTP with `urllib` and `http.client` against a live service on a
+port of its own, including concurrent conversions and the status of every
+refusal; the cover tests count pages, compare the cover's page box against the
+document's, and check that the document's bands did not follow the cover.
 
 ## License
 

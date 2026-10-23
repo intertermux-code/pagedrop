@@ -25,8 +25,19 @@ _HEAD_CLOSE_RE = re.compile(r"</head\s*>", re.IGNORECASE)
 _HEAD_OPEN_RE = re.compile(r"(<head\b[^>]*>)", re.IGNORECASE)
 _HTML_OPEN_RE = re.compile(r"(<html\b[^>]*>)", re.IGNORECASE)
 _BODY_OPEN_RE = re.compile(r"(<body\b[^>]*>)", re.IGNORECASE)
+_PAGE_RULE_RE = re.compile(r"@(page|frame)\b", re.IGNORECASE)
 
 _OUTLINE_HEADINGS = "h1, h2, h3, h4, h5, h6"
+
+
+def engine_version() -> str:
+    """The ``xhtml2pdf`` release pip resolved for this interpreter."""
+    try:
+        from importlib.metadata import version
+
+        return version("xhtml2pdf")
+    except Exception:  # noqa: BLE001 - the version line must never fail
+        return "unknown"
 
 
 def _frame(name: str, content_id: str, top: float, left: float, width: float, height: float) -> str:
@@ -63,19 +74,33 @@ def _band_markup(band: Band) -> str:
     return "\n".join(parts)
 
 
+def declares_page(markup: str) -> bool:
+    """Whether the document names a page box of its own in its CSS."""
+    return bool(_PAGE_RULE_RE.search(markup))
+
+
 def page_css(job: Job) -> str:
-    """The ``@page`` rules: paper, margins, and one frame per band."""
+    """The ``@page`` rules: paper, margins, and one frame per band.
+
+    A job marked ``own_page`` brought its own page box in its CSS. Overriding
+    it with the default A4 would be the shim arguing with the document, so the
+    geometry is left out -- unless there are bands to draw, because a frame
+    needs a page box measured in points to sit inside.
+    """
     top, right, bottom, left = job.margins
     content_width = job.page_width - left - right
+    bands = [
+        (band, content_id, is_header)
+        for band, content_id, is_header in ((job.header, HEADER_ID, True), (job.footer, FOOTER_ID, False))
+        if band is not None and band.wanted
+    ]
+    if job.own_page and not bands:
+        return "\n".join(_outline_css(job) + _stylesheet_css(job)) + "\n"
+
     rules = [f"@page {{ size: {job.page_width:.2f}pt {job.page_height:.2f}pt;",
              f"  margin: {top:.2f}pt {right:.2f}pt {bottom:.2f}pt {left:.2f}pt;"]
 
-    for band, content_id, is_header in (
-        (job.header, HEADER_ID, True),
-        (job.footer, FOOTER_ID, False),
-    ):
-        if band is None or not band.wanted:
-            continue
+    for band, content_id, is_header in bands:
         depth = band.depth
         if is_header:
             rules.append("  " + _frame(f"wkhtmltopdf-dropin-{content_id}", content_id, 0.0, left, content_width, depth))
@@ -93,39 +118,51 @@ def page_css(job: Job) -> str:
             )
     rules.append("}")
 
-    if not job.outline:
-        rules.append(f"{_OUTLINE_HEADINGS} {{ -pdf-outline: false; }}")
-    elif job.outline_depth is not None and 0 < job.outline_depth < 6:
-        hidden = ", ".join(f"h{level}" for level in range(job.outline_depth + 1, 7))
-        rules.append(f"{hidden} {{ -pdf-outline: false; }}")
+    rules += _outline_css(job)
+    for band, content_id, is_header in bands:
+        rules.append(band.css)
+        rules.append(_band_css(band, content_id, is_header))
 
-    for band, content_id, is_header in (
-        (job.header, HEADER_ID, True),
-        (job.footer, FOOTER_ID, False),
-    ):
-        if band is not None and band.wanted:
-            rules.append(band.css)
-            rules.append(_band_css(band, content_id, is_header))
-
-    if job.stylesheet:
-        rules.append(job.stylesheet)
+    rules += _stylesheet_css(job)
     return "\n".join(rules) + "\n"
 
 
+def _outline_css(job: Job) -> List[str]:
+    """The rules that switch bookmarks off, since the engine has no outline flag."""
+    if not job.outline:
+        return [f"{_OUTLINE_HEADINGS} {{ -pdf-outline: false; }}"]
+    if job.outline_depth is not None and 0 < job.outline_depth < 6:
+        hidden = ", ".join(f"h{level}" for level in range(job.outline_depth + 1, 7))
+        return [f"{hidden} {{ -pdf-outline: false; }}"]
+    return []
+
+
+def _stylesheet_css(job: Job) -> List[str]:
+    """``--user-style-sheet``, which comes last and so outranks the document."""
+    return [job.stylesheet] if job.stylesheet else []
+
+
 def inject(document: str, head: str, body: str) -> str:
-    """Put generated CSS into ``<head>`` and markup at the start of ``<body>``."""
+    """Put generated CSS into ``<head>`` and markup at the start of ``<body>``.
+
+    The replacements are functions rather than templates: ``head`` and ``body``
+    hold the document's own title and the header and footer text, and a template
+    would read a backslash in those as an escape of its own.
+    """
     if _HEAD_CLOSE_RE.search(document):
-        document = _HEAD_CLOSE_RE.sub(head + "</head>", document, count=1)
+        document = _HEAD_CLOSE_RE.sub(lambda match: head + "</head>", document, count=1)
     elif _HEAD_OPEN_RE.search(document):
-        document = _HEAD_OPEN_RE.sub(r"\1" + head, document, count=1)
+        document = _HEAD_OPEN_RE.sub(lambda match: match.group(1) + head, document, count=1)
     elif _HTML_OPEN_RE.search(document):
-        document = _HTML_OPEN_RE.sub(r"\1<head>" + head + "</head>", document, count=1)
+        document = _HTML_OPEN_RE.sub(
+            lambda match: match.group(1) + "<head>" + head + "</head>", document, count=1
+        )
     else:
-        document = "<html><head>" + head + "</head><body>" + body + "</body></html>"
-        return document
+        # A bare fragment: it is the body of the document we are making.
+        document = "<html><head>" + head + "</head><body>" + document + "</body></html>"
 
     if _BODY_OPEN_RE.search(document):
-        return _BODY_OPEN_RE.sub(r"\1" + body, document, count=1)
+        return _BODY_OPEN_RE.sub(lambda match: match.group(1) + body, document, count=1)
     return document.replace("</body>", body + "</body>", 1) if "</body>" in document else document + body
 
 

@@ -28,8 +28,11 @@ DEGRADED = {
 
 def _values(ctx: Dict[str, object]) -> Dict[str, str]:
     now = ctx["now"]
-    title = str(ctx.get("title") or "")
-    url = str(ctx.get("url") or "")
+    # A path, a name from --title, or the placeholder "<request>": these arrive
+    # from outside and land inside markup, so a < in one stays the character it
+    # was rather than opening a tag the band never meant to have.
+    title = html.escape(str(ctx.get("title") or ""), quote=False)
+    url = html.escape(str(ctx.get("url") or ""), quote=False)
     return {
         "page": PAGE_NUMBER_TAG,
         "topage": PAGE_COUNT_TAG,

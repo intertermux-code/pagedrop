@@ -42,6 +42,7 @@ class Job:
     page_width: float = 595.28
     page_height: float = 841.89
     margins: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # top right bottom left
+    own_page: bool = False  # the document's own @page rules govern it, as a cover's do
     header: Optional[Band] = None
     footer: Optional[Band] = None
     title: Optional[str] = None

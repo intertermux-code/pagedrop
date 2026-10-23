@@ -1,8 +1,9 @@
-"""Reading the document and the side files it points at."""
+"""Reading the document and the side files it points at, and writing the PDF out."""
 
 from __future__ import annotations
 
 import os
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -10,6 +11,18 @@ import urllib.request
 from .errors import ShimError
 
 TIMEOUT_SECONDS = 30
+
+
+def write_output(path: str, data: bytes) -> None:
+    """The finished PDF, to a file or to standard output when named ``-``."""
+    if path == "-":
+        sys.stdout.buffer.write(data)
+        sys.stdout.buffer.flush()
+        return
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    with open(path, "wb") as handle:
+        handle.write(data)
 
 
 def read_resource(uri: str, base_dir: str = ".") -> bytes:

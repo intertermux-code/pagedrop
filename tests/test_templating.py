@@ -35,6 +35,16 @@ def test_title_and_url():
     assert sub("[title] - [url] - [doctitle] - [webpage]") == "Invoice 42 - in.html - Invoice 42 - in.html"
 
 
+def test_a_value_that_looks_like_markup_stays_text():
+    """The service names a document ``<request>``; a band has to show it, not eat it."""
+    assert sub("[url]", url="<request>") == "&lt;request&gt;"
+    assert sub("[title]", title="Q3 & <b>") == "Q3 &amp; &lt;b&gt;"
+
+
+def test_an_ampersand_in_a_source_is_escaped_once():
+    assert sub("[url]", url="https://example.com/?a=1&b=2") == "https://example.com/?a=1&amp;b=2"
+
+
 def test_unknown_token_survives():
     assert sub("[notaworkingtoken] stays") == "[notaworkingtoken] stays"
 
