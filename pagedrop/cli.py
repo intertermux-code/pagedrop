@@ -46,6 +46,7 @@ class _ConsoleHandler(logging.StreamHandler):
 
 def version_text(prog: str) -> str:
     from . import __version__
+    from . import engine
 
     return f"{prog} {__version__} (pagedrop shim, engine xhtml2pdf {engine.engine_version()})"
 

@@ -1,5 +1,8 @@
 # pagedrop
 
+[![PyPI version](https://img.shields.io/pypi/v/pagedrop.svg)](https://pypi.org/project/pagedrop/)
+[![CI](https://github.com/intertermux-code/pagedrop/actions/workflows/test.yml/badge.svg)](https://github.com/intertermux-code/pagedrop/actions/workflows/test.yml)
+
 A pip-installable, flag-compatible drop-in replacement for
 [wkhtmltopdf](https://github.com/wkhtmltopdf/wkhtmltopdf). Same command line,
 same header and footer variables, same exit codes — and a maintained engine
@@ -426,13 +429,27 @@ $ .venv/bin/wkhtmltopdf cover examples/cover.html examples/invoice.html out/pack
 $ .venv/bin/pagedrop serve --port 8080 --verbose
 ```
 
-The suite renders real PDFs and reads them back with `pypdf`: page counts,
+The suite has 202 tests. It renders real PDFs and reads them back with `pypdf`: page counts,
 per-page footer numbering, margins that change pagination, metadata, outline
 entries and the absence of RGB operators after `--grayscale`. The server is
 tested over HTTP with `urllib` and `http.client` against a live service on a
 port of its own, including concurrent conversions and the status of every
 refusal; the cover tests count pages, compare the cover's page box against the
 document's, and check that the document's bands did not follow the cover.
+
+
+## Releasing
+
+1. Bump the version in `pyproject.toml` and `pagedrop/__init__.py`.
+2. `git tag vX.Y.Z`
+3. Push the tag: `git push origin vX.Y.Z`.
+
+`publish.yml` builds the sdist and wheel, runs `twine check`, and publishes to
+PyPI via OIDC trusted publishing.
+
+One-time manual step: register the trusted publisher on pypi.org for project
+"pagedrop", owner `intertermux-code/pagedrop`, workflow filename `publish.yml`.
+This must be done by the maintainer and cannot be automated here.
 
 ## License
 

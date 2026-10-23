@@ -27,7 +27,7 @@ def run(tmp_path, argv):
 def test_version_exits_zero(capsys):
     assert cli.main(["--version"], prog="wkhtmltopdf") == 0
     out = capsys.readouterr().out
-    assert re.match(r"wkhtmltopdf 0\.1\.0 \(pagedrop shim, engine xhtml2pdf \d+\.\d+", out)
+    assert re.match(r"wkhtmltopdf 0\.2\.0 \(pagedrop shim, engine xhtml2pdf \d+\.\d+", out.strip())
 
 
 def test_help_exits_zero_and_looks_like_wkhtmltopdf(capsys):
