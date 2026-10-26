@@ -164,7 +164,8 @@ FLAGS: List[Flag] = [
     # --- margins ------------------------------------------------------------
     Flag("--margin-unit", "Allowed units are mm, cm, inch, pt, px (default mm)", "page",
          metavar="<unit>"),
-    Flag("--margin", "Set the page margins (default 10mm)", "page", metavar="<unitreal>"),
+    Flag("--margin", "Set the page margins (default 10mm)", "page", metavar="<unitreal>",
+         short="-m"),
     Flag("--margin-top", "Set the page top margin (default 10mm)", "page", metavar="<unitreal>",
          short="-T"),
     Flag("--margin-right", "Set the page right margin (default 10mm)", "page", metavar="<unitreal>",

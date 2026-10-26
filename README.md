@@ -85,11 +85,11 @@ system package or put the pip `bin` directory first:
 ```console
 $ which wkhtmltopdf                      # should be your venv or ~/.local/bin
 $ wkhtmltopdf --version
-wkhtmltopdf 0.1.0 (pagedrop shim, engine xhtml2pdf 0.2.27)
+wkhtmltopdf 0.2.0 (pagedrop shim, engine xhtml2pdf 0.2.28)
 ```
 
 The engine version is the `xhtml2pdf` release pip resolved for your interpreter:
-0.2.27 on Python 3.10 and newer, 0.2.17 on 3.9, because the newer releases need
+0.2.28 on Python 3.10 and newer, 0.2.17 on 3.9, because the newer releases need
 3.10.
 
 The version line says what it is. Scripts that grep for `0.12` need updating
@@ -241,7 +241,7 @@ pagedrop serve: listening on http://127.0.0.1:8080/ (GET /health, POST /convert)
 
 ```console
 $ curl -s http://127.0.0.1:8080/health
-{"status": "ok", "version": "0.1.0", "engine": "0.2.27", "converting": 0, "waiting": 0}
+{"status": "ok", "version": "0.2.0", "engine": "0.2.28", "converting": 0, "waiting": 0}
 $ curl -s --data-binary @invoice.html -H 'Content-Type: text/html' \
     'http://127.0.0.1:8080/convert?margin-top=25mm&footer-center=Page%20%5Bpage%5D%20of%20%5Btopage%5D' \
     -o invoice.pdf

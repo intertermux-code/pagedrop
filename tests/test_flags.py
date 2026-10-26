@@ -45,6 +45,17 @@ def test_margins_are_translated_in_the_given_unit(tmp_path, page, out):
     assert job.margins == pytest.approx((72.0,) * 4)
 
 
+def test_short_margin_flag_equals_long_flag(tmp_path, page, out):
+    short = job_for(tmp_path, page, out, ["-m", "12mm"])
+    long = job_for(tmp_path, page, out, ["--margin", "12mm"])
+    assert short.margins == long.margins
+
+
+def test_short_margin_flag_requires_a_value(page, out):
+    with pytest.raises(Exception, match="requires a value"):
+        flags.ArgumentParser("wkhtmltopdf").parse_args([page, out, "-m"])
+
+
 def test_mixed_units_and_bare_numbers(tmp_path, page, out):
     job = job_for(
         tmp_path, page, out,
