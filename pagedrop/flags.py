@@ -291,7 +291,9 @@ def expand_options_files(argv: Sequence[str]) -> List[str]:
 
 def _read_options_file(path: str) -> List[str]:
     text = read_resource(path, os.getcwd()).decode("utf-8", "replace")
-    lines = [re.sub(r"\s+#.*$", "", line) for line in text.splitlines()]
+    # A comment is "#" at the head of a line or after whitespace; requiring the
+    # whitespace first turned every full-line comment into three stray arguments.
+    lines = [re.sub(r"(^|\s)#.*$", "", line) for line in text.splitlines()]
     words = [word for line in lines for word in shlex.split(line) if word]
     if any(word == "--options-file" or word.startswith("--options-file=") for word in words):
         raise ShimError("nested --options-file is not supported")

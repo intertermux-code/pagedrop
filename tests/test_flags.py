@@ -217,6 +217,30 @@ def test_options_file_is_spliced(tmp_path, page, out):
     assert argv == ["--page-size", "Letter", "--margin-top", "20mm", page, out]
 
 
+def test_options_file_accepts_full_line_comments(tmp_path, page, out):
+    opts = tmp_path / "opts.txt"
+    opts.write_text("# page size\n--page-size Letter\n\n    # margins\n--margin-top 20mm\n",
+                    encoding="utf-8")
+    argv = flags.expand_options_files(["--options-file", str(opts), page, out])
+    assert argv == ["--page-size", "Letter", "--margin-top", "20mm", page, out]
+
+
+def test_options_file_comment_does_not_become_an_argument(tmp_path, page, out):
+    opts = tmp_path / "opts.txt"
+    opts.write_text("# a comment at column 0\n--page-size Letter\n", encoding="utf-8")
+    # cli.run() parses the spliced list, not the raw argv.
+    argv = flags.expand_options_files([page, out, "--options-file", str(opts)])
+    job = flags.build_job(parse(argv))
+    assert (job.page_width, job.page_height) == pytest.approx((612.0, 792.0))
+
+
+def test_options_file_keeps_hash_inside_a_value(tmp_path, page, out):
+    opts = tmp_path / "opts.txt"
+    opts.write_text("--footer-left ACME#42\n", encoding="utf-8")
+    argv = flags.expand_options_files(["--options-file", str(opts), page, out])
+    assert argv[:2] == ["--footer-left", "ACME#42"]
+
+
 def test_every_flag_is_documented():
     text = "\n".join(flag.help_line() for flag in flags.FLAGS)
     for flag in flags.FLAGS:

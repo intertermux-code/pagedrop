@@ -429,7 +429,7 @@ $ .venv/bin/wkhtmltopdf cover examples/cover.html examples/invoice.html out/pack
 $ .venv/bin/pagedrop serve --port 8080 --verbose
 ```
 
-The suite has 202 tests. It renders real PDFs and reads them back with `pypdf`: page counts,
+The suite has 207 tests. It renders real PDFs and reads them back with `pypdf`: page counts,
 per-page footer numbering, margins that change pagination, metadata, outline
 entries and the absence of RGB operators after `--grayscale`. The server is
 tested over HTTP with `urllib` and `http.client` against a live service on a
