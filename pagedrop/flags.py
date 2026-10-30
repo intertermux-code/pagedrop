@@ -309,6 +309,26 @@ def _same_value(value: object, default: Optional[str]) -> bool:
         return False
 
 
+# The flags whose value the job reads back as a plain number. Lengths are not
+# among them: ``--margin 2cm`` carries its own unit and parse_length is the one
+# that says whether it is a length. Keyed by dest, and whether it has to be a
+# whole one.
+_NUMERIC_OPTIONS = {
+    "outline_depth": True,
+    "header_font_size": False,
+    "footer_font_size": False,
+}
+
+
+def _number(value: object, option: str, whole: bool = False) -> float:
+    """A flag value the engine needs as a number, refused by name when it is not one."""
+    kind, example = ("a whole number", "4") if whole else ("a number", "12")
+    try:
+        return int(str(value).strip()) if whole else float(str(value).strip())
+    except ValueError:
+        raise ShimError(f"option '{option}' takes {kind}, e.g. {example}, not '{value}'") from None
+
+
 def check_limitations(ns: argparse.Namespace) -> None:
     """Refuse what cannot be done, before anything is read from disk."""
     for flag in FLAGS:
@@ -319,6 +339,8 @@ def check_limitations(ns: argparse.Namespace) -> None:
             raise ShimError(f"option '{flag.name}' is not supported: {flag.limitation}")
         if flag.support is DEFAULT_ONLY and not _same_value(value, flag.default):
             raise ShimError(f"option '{flag.name}' is not supported: {flag.limitation}")
+        if flag.dest in _NUMERIC_OPTIONS:
+            _number(value, flag.name, _NUMERIC_OPTIONS[flag.dest])
 
 
 def _get(ns: argparse.Namespace, name: str) -> Optional[object]:
@@ -429,7 +451,7 @@ def _band(ns: argparse.Namespace, kind: str, unit: str, ctx: Dict[str, object], 
     for attribute, option in (("font_name", "font-name"), ("font_size", "font-size"), ("font_color", "font-color")):
         value = _get(ns, f"{kind}-{option}")
         if value is not None:
-            setattr(band, attribute, float(value) if attribute == "font_size" else str(value))
+            setattr(band, attribute, _number(value, f"--{kind}-{option}") if attribute == "font_size" else str(value))
 
     if band.depth <= 0:
         raise ShimError(
@@ -525,7 +547,7 @@ def build_job(ns: argparse.Namespace, document: Optional[bytes] = None) -> Job:
         footer=_band(ns, "footer", unit, ctx, notes),
         title=_get(ns, "title"),
         outline=not _get(ns, "no-outline"),
-        outline_depth=int(depth) if depth is not None else None,
+        outline_depth=_number(depth, "--outline-depth", whole=True) if depth is not None else None,
         grayscale=bool(_get(ns, "grayscale")),
         stylesheet=stylesheet,
         log_path=str(_get(ns, "log-path")) if _get(ns, "log-path") is not None else None,

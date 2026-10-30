@@ -4,6 +4,7 @@ import pytest
 from pypdf import PdfReader
 
 from pagedrop import flags
+from pagedrop.errors import ShimError
 
 
 def parse(argv):
@@ -196,6 +197,41 @@ def test_the_same_options_refused_off_their_default(page, out, argv):
     ns = flags.ArgumentParser("wkhtmltopdf").parse_args([page, out, *argv])
     with pytest.raises(Exception, match="is not supported"):
         flags.check_limitations(ns)
+
+
+@pytest.mark.parametrize("argv", [
+    ["--outline-depth", "deep"],
+    ["--outline-depth", "2.5"],
+    ["--header-font-size", "big"],
+    ["--footer-font-size", "huge"],
+])
+def test_a_number_option_refuses_a_value_that_is_not_a_number(page, out, argv):
+    with pytest.raises(ShimError) as error:
+        parse([page, out, *argv])
+
+    option, value = argv
+    message = str(error.value)
+    assert option in message and f"'{value}'" in message
+
+
+def test_a_number_option_is_refused_by_the_job_too(page, out):
+    """build_job is reachable without the check, so it refuses there as well."""
+    ns = flags.ArgumentParser("wkhtmltopdf").parse_args([page, out, "--outline-depth", "deep"])
+    with pytest.raises(ShimError, match="outline-depth"):
+        flags.build_job(ns)
+
+
+def test_a_band_font_size_is_refused_by_the_job_too(page, out):
+    ns = flags.ArgumentParser("wkhtmltopdf").parse_args([page, out, "--header-left", "x", "--header-font-size", "big"])
+    with pytest.raises(ShimError, match="header-font-size"):
+        flags.build_job(ns)
+
+
+def test_a_number_option_still_takes_the_numbers_it_did(page, out):
+    assert flags.build_job(parse([page, out, "--outline-depth", "0"])).outline_depth == 0
+    job = flags.build_job(parse([page, out, "--header-left", "x", "--header-font-size", " 9.5 "]))
+    assert job.header.font_size == 9.5
+    assert flags.build_job(parse([page, out, "--footer-left", "x", "--footer-font-size", "12"])).footer.font_size == 12.0
 
 
 @pytest.mark.parametrize("argv", [["--print-media-type"], ["--disable-smart-shrinking"],

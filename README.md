@@ -153,7 +153,10 @@ difference. A conversion that succeeds prints nothing.
 
 Anything not on that list is refused: with an explanation where the two engines
 genuinely differ, and as an unknown option where the flag does not exist at
-all. That is the right outcome while you are grepping for stragglers.
+all. A value that has to be a number and is not one — `--outline-depth deep`,
+`--header-font-size big` — is refused the same way, naming the option and the
+value it was given: exit 1 on the command line, `400` from the service. That is
+the right outcome while you are grepping for stragglers.
 
 ### Header and footer variables
 
@@ -429,7 +432,7 @@ $ .venv/bin/wkhtmltopdf cover examples/cover.html examples/invoice.html out/pack
 $ .venv/bin/pagedrop serve --port 8080 --verbose
 ```
 
-The suite has 207 tests. It renders real PDFs and reads them back with `pypdf`: page counts,
+The suite has 224 tests. It renders real PDFs and reads them back with `pypdf`: page counts,
 per-page footer numbering, margins that change pagination, metadata, outline
 entries and the absence of RGB operators after `--grayscale`. The server is
 tested over HTTP with `urllib` and `http.client` against a live service on a

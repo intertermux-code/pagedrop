@@ -241,6 +241,32 @@ class TestRefusals:
         assert status == 400
         assert "no JavaScript" in refusal(body)
 
+    @pytest.mark.parametrize("option, value", [
+        ("outline-depth", "deep"),
+        ("outline-depth", "2.5"),
+        ("header-font-size", "big"),
+        ("footer-font-size", "huge"),
+    ])
+    def test_an_option_value_that_is_not_a_number_is_a_bad_request(self, running, option, value):
+        status, _, body = json_post(running, {"html": DOCUMENT, "options": {option: value}})
+
+        assert status == 400
+        assert f"'--{option}'" in refusal(body) and f"'{value}'" in refusal(body)
+        assert b"Traceback" not in body
+
+    def test_a_query_string_option_that_is_not_a_number_is_a_bad_request(self, running):
+        query = urllib.parse.urlencode({"outline-depth": "deep"})
+        status, _, body = post(running, f"/convert?{query}", DOCUMENT.encode(), "text/html")
+
+        assert status == 400
+        assert "whole number" in refusal(body)
+
+    def test_a_number_option_still_takes_its_numbers(self, running):
+        pages = options(running, **{"outline-depth": 2, "header-font-size": "9", "header-left": "ACME"})
+
+        assert "Served Report" in text_of(pages[0])
+        assert "ACME" in text_of(pages[0])
+
     def test_a_cover_is_a_field_and_never_a_path_on_the_servers_disk(self, running):
         status, _, body = json_post(running, {"html": DOCUMENT, "options": {"cover": "/etc/passwd"}})
 

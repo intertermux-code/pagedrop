@@ -65,6 +65,22 @@ def test_missing_input_file_is_refused(tmp_path, capsys):
     assert "cannot read" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("argv", [
+    ["--outline-depth", "deep"],
+    ["--outline-depth", "2.5"],
+    ["--header-font-size", "big"],
+    ["--footer-font-size", "huge"],
+])
+def test_a_number_flag_that_is_not_a_number_is_refused_without_a_trace(tmp_path, source, capsys, argv):
+    target = tmp_path / "out.pdf"
+    assert run(tmp_path, [source, target, *argv]) == 1
+    err = capsys.readouterr().err
+
+    assert f"option '{argv[0]}' takes" in err
+    assert "Traceback" not in err
+    assert not target.exists()
+
+
 def test_conversion_writes_a_pdf(tmp_path, source):
     target = tmp_path / "out.pdf"
     assert run(tmp_path, [source, target]) == 0
