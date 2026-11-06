@@ -248,7 +248,7 @@ def test_inert_options_do_not_reach_the_job(page, out):
 
 def test_options_file_is_spliced(tmp_path, page, out):
     opts = tmp_path / "opts.txt"
-    opts.write_text("--page-size Letter\n--margin-top 20mm  # comment\n", encoding="utf-8")
+    opts.write_text("--page-size Letter\n# comment\n--margin-top 20mm\n", encoding="utf-8")
     argv = flags.expand_options_files(["--options-file", str(opts), page, out])
     assert argv == ["--page-size", "Letter", "--margin-top", "20mm", page, out]
 
@@ -275,6 +275,38 @@ def test_options_file_keeps_hash_inside_a_value(tmp_path, page, out):
     opts.write_text("--footer-left ACME#42\n", encoding="utf-8")
     argv = flags.expand_options_files(["--options-file", str(opts), page, out])
     assert argv[:2] == ["--footer-left", "ACME#42"]
+
+
+def test_options_file_keeps_hash_after_a_space_in_a_quoted_value(tmp_path, page, out):
+    opts = tmp_path / "opts.txt"
+    opts.write_text('--footer-center "Total # 5"\n', encoding="utf-8")
+    argv = flags.expand_options_files(["--options-file", str(opts), page, out])
+    assert flags.build_job(parse(argv)).footer.center == "Total # 5"
+
+
+def test_options_file_keeps_a_hash_coloured_value(tmp_path, page, out):
+    opts = tmp_path / "opts.txt"
+    opts.write_text("--footer-center x\n--footer-font-color #FF0000\n", encoding="utf-8")
+    argv = flags.expand_options_files([page, out, "--options-file", str(opts)])
+    assert flags.build_job(parse(argv)).footer.font_color == "#FF0000"
+
+
+def test_options_file_comments_and_hash_values_together(tmp_path, page, out):
+    opts = tmp_path / "opts.txt"
+    opts.write_text('# the footer counts pages\n--footer-center "Total # 5"\n'
+                    '\n    # the paper\n--page-size Letter\n', encoding="utf-8")
+    argv = flags.expand_options_files(["--options-file", str(opts), page, out])
+    assert argv == ["--footer-center", "Total # 5", "--page-size", "Letter", page, out]
+
+
+def test_options_file_refuses_an_unquoted_hash_rather_than_hiding_it(tmp_path, page, out):
+    opts = tmp_path / "opts.txt"
+    opts.write_text("--footer-center Total # 5\n", encoding="utf-8")
+    argv = flags.expand_options_files(["--options-file", str(opts), page, out])
+    # The words are there, but only quotes join them into one value: what is
+    # left over is a mistake the user hears about, not a footer that says less.
+    with pytest.raises(ShimError):
+        parse(argv)
 
 
 def test_every_flag_is_documented():

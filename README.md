@@ -145,7 +145,7 @@ difference. A conversion that succeeds prints nothing.
 | `-g, --grayscale` | RGB fills and strokes rewritten to their luma equivalent |
 | `--user-style-sheet` | CSS appended after the document's own |
 | `--disable-local-file-access` | confine image and font reads to the document's directory |
-| `--options-file` | extra arguments read from a file, `#` comments allowed |
+| `--options-file` | extra arguments read from a file, `#` comments on a line of their own; quote a value that contains a `#` |
 | `--log-path` | engine warnings written to a file |
 | `-q, --quiet` | suppress the shim's own notes |
 | `--print-media-type`, `--disable-smart-shrinking`, `--enable-local-file-access`, `--disable-javascript`, `--no-stop-slow-scripts`, `--lowquality` | accepted: this engine already behaves that way |
@@ -432,7 +432,7 @@ $ .venv/bin/wkhtmltopdf cover examples/cover.html examples/invoice.html out/pack
 $ .venv/bin/pagedrop serve --port 8080 --verbose
 ```
 
-The suite has 224 tests. It renders real PDFs and reads them back with `pypdf`: page counts,
+The suite has 229 tests. It renders real PDFs and reads them back with `pypdf`: page counts,
 per-page footer numbering, margins that change pagination, metadata, outline
 entries and the absence of RGB operators after `--grayscale`. The server is
 tested over HTTP with `urllib` and `http.client` against a live service on a

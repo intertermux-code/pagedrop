@@ -136,3 +136,13 @@ def test_log_level_none_keeps_the_engine_quiet(tmp_path, source, capsys):
 def test_unknown_log_level_is_refused(tmp_path, source, capsys):
     assert run(tmp_path, [source, tmp_path / "out.pdf", "--log-level", "chatty"]) == 1
     assert "unknown log level 'chatty'" in capsys.readouterr().err
+
+
+def test_options_file_hash_reaches_the_rendered_page(tmp_path, source):
+    opts = tmp_path / "opts.txt"
+    opts.write_text('# the total is printed in the footer\n--footer-center "Total # 5"\n',
+                    encoding="utf-8")
+    target = tmp_path / "out.pdf"
+    assert run(tmp_path, ["--options-file", opts, source, target]) == 0
+    text = "".join(page.extract_text() or "" for page in PdfReader(str(target)).pages)
+    assert "Total # 5" in text
