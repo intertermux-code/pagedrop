@@ -157,6 +157,84 @@ def test_encoding_flag_decodes_the_input(tmp_path):
     assert "Grüße" in text_of(pages(data)[0])
 
 
+def test_meta_charset_windows_1252_is_honoured(tmp_path):
+    page = tmp_path / "meta.html"
+    page.write_bytes(
+        '<html><head><meta charset="windows-1252"><title>Test</title></head>'
+        '<body><p>Grüße, naïf</p></body></html>'.encode("windows-1252")
+    )
+    data = convert(page)
+    assert "Grüße" in text_of(pages(data)[0])
+    assert "naïf" in text_of(pages(data)[0])
+
+
+def test_meta_charset_latin_1_is_honoured(tmp_path):
+    page = tmp_path / "meta.html"
+    page.write_bytes(
+        '<html><head><meta charset="latin-1"><title>Test</title></head>'
+        '<body><p>Grüße, naïf</p></body></html>'.encode("latin-1")
+    )
+    data = convert(page)
+    assert "Grüße" in text_of(pages(data)[0])
+    assert "naïf" in text_of(pages(data)[0])
+
+
+def test_meta_charset_http_equiv_is_honoured(tmp_path):
+    page = tmp_path / "meta.html"
+    page.write_bytes(
+        '<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">'
+        '<title>Test</title></head><body><p>Grüße, naïf</p></body></html>'.encode("windows-1252")
+    )
+    data = convert(page)
+    assert "Grüße" in text_of(pages(data)[0])
+
+
+def test_no_meta_charset_defaults_to_utf8(tmp_path):
+    page = tmp_path / "no_meta.html"
+    page.write_text('<html><body><p>Grüße, naïf</p></body></html>', encoding="utf-8")
+    data = convert(page)
+    assert "Grüße" in text_of(pages(data)[0])
+    assert "naïf" in text_of(pages(data)[0])
+
+
+def test_explicit_encoding_overrides_meta_charset(tmp_path):
+    page = tmp_path / "meta.html"
+    page.write_bytes(
+        '<html><head><meta charset="windows-1252"><title>Test</title></head>'
+        '<body><p>Grüße, naïf</p></body></html>'.encode("windows-1252")
+    )
+    # Force UTF-8 decoding: should produce mojibake
+    data = convert(page, "--encoding", "utf-8")
+    text = text_of(pages(data)[0])
+    assert "Grüße" not in text
+    assert "naïf" not in text
+
+
+def test_unknown_meta_charset_falls_back_to_utf8(tmp_path, capsys):
+    page = tmp_path / "meta.html"
+    page.write_bytes(
+        '<html><head><meta charset="unknown-charset-xyz"><title>Test</title></head>'
+        '<body><p>Hello World</p></body></html>'.encode("utf-8")
+    )
+    data = convert(page)
+    assert "Hello World" in text_of(pages(data)[0])
+    err = capsys.readouterr().err
+    assert "unknown charset" in err.lower()
+
+
+def test_undecodable_meta_charset_falls_back_to_utf8(tmp_path, capsys):
+    page = tmp_path / "meta.html"
+    # Declare UTF-16 but write as UTF-8 (undecodable as UTF-16)
+    page.write_bytes(
+        '<html><head><meta charset="utf-16"><title>Test</title></head>'
+        '<body><p>Hello World</p></body></html>'.encode("utf-8")
+    )
+    data = convert(page)
+    assert "Hello World" in text_of(pages(data)[0])
+    err = capsys.readouterr().err
+    assert "failed to decode" in err.lower()
+
+
 def test_user_style_sheet_is_applied(source):
     css = source.parent / "extra.css"
     css.write_text("p { font-size: 3pt }", encoding="utf-8")

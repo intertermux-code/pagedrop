@@ -39,6 +39,28 @@ DEFAULT_BAND_DEPTH = mm(15)
 NO_JS = "the print engine runs no JavaScript"
 
 
+# Match <meta charset="..."> or <meta http-equiv="Content-Type" content="...charset=...">
+# HTML5 spec says to scan the first 1024 bytes.
+_CHARSET_RE = re.compile(
+    r'<meta\s+(?:charset=["\']?([^"\'>\s]+)["\']?|http-equiv=["\']?Content-Type["\']?[^>]*content=["\'][^"\']*charset=([^"\'>\s]+)["\'])',
+    re.IGNORECASE,
+)
+
+
+def _detect_charset(data: bytes) -> Optional[str]:
+    """Return the charset declared in the first 1024 bytes of ``data``, or ``None``.
+
+    Follows the HTML5 encoding sniffing algorithm shape: the first
+    ``<meta charset>`` or ``<meta http-equiv="Content-Type" ... charset=...>``
+    wins. Only the first 1024 bytes are examined.
+    """
+    head = data[:1024].decode("ascii", "ignore")
+    match = _CHARSET_RE.search(head)
+    if match:
+        return (match.group(1) or match.group(2)).strip().lower()
+    return None
+
+
 class Flag:
     def __init__(
         self,
@@ -495,7 +517,7 @@ def build_job(ns: argparse.Namespace, document: Optional[bytes] = None) -> Job:
     ``ns.input == "-"``, and the conversion service hands the body straight over.
     """
     notes: List[str] = []
-    encoding = str(_get(ns, "encoding") or "utf-8")
+    explicit_encoding = _get(ns, "encoding")
     unit = margin_unit(ns)
 
     if document is not None:
@@ -505,6 +527,25 @@ def build_job(ns: argparse.Namespace, document: Optional[bytes] = None) -> Job:
         data, source, base_dir = sys.stdin.buffer.read(), "<stdin>", os.getcwd()
     else:
         data, source, base_dir = read_resource(ns.input, os.getcwd()), ns.input, _base_dir(ns.input)
+
+    # Determine the encoding: explicit --encoding wins; otherwise sniff <meta charset>;
+    # if neither, default to UTF-8 with errors=replace (preserving current behaviour).
+    if explicit_encoding is not None:
+        encoding = str(explicit_encoding)
+    else:
+        detected = _detect_charset(data)
+        if detected is not None:
+            try:
+                # Verify Python can decode with this encoding.
+                data.decode(detected)
+            except LookupError:
+                sys.stderr.write(f"wkhtmltopdf: unknown charset '{detected}', falling back to UTF-8\n")
+                detected = None
+            except UnicodeDecodeError:
+                sys.stderr.write(f"wkhtmltopdf: failed to decode as '{detected}', falling back to UTF-8\n")
+                detected = None
+        encoding = detected or "utf-8"
+
     html = data.decode(encoding, "replace")
 
     width, height = page_size(str(_get(ns, "page-size") or "A4"))

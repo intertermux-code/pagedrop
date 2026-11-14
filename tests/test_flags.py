@@ -336,3 +336,48 @@ def test_pdf_page_size_follows_the_flags(tmp_path, page, out):
     data = render(page, out, ["--page-size", "Letter", "--orientation", "Landscape"])
     box = PdfReader(io.BytesIO(data)).pages[0].mediabox
     assert (int(box.width), int(box.height)) == (792, 612)
+
+
+def test_detect_charset_meta_tag(tmp_path):
+    html = b'<html><head><meta charset="windows-1252"><title>Test</title></head><body>x</body></html>'
+    assert flags._detect_charset(html) == "windows-1252"
+
+
+def test_detect_charset_http_equiv(tmp_path):
+    html = b'<html><head><meta http-equiv="Content-Type" content="text/html; charset=latin-1"><title>Test</title></head><body>x</body></html>'
+    assert flags._detect_charset(html) == "latin-1"
+
+
+def test_detect_charset_first_declaration_wins(tmp_path):
+    html = (
+        b'<html><head><meta charset="windows-1252"><meta charset="latin-1">'
+        b'<title>Test</title></head><body>x</body></html>'
+    )
+    assert flags._detect_charset(html) == "windows-1252"
+
+
+def test_detect_charset_only_in_first_1024_bytes(tmp_path):
+    # Charset declaration after 1024 bytes should not be detected
+    padding = b"x" * 1100
+    html = b'<html><head><title>Test</title></head><body>' + padding + b'<meta charset="windows-1252">x</body></html>'
+    assert flags._detect_charset(html) is None
+
+
+def test_detect_charset_no_declaration_returns_none(tmp_path):
+    html = b'<html><head><title>Test</title></head><body>x</body></html>'
+    assert flags._detect_charset(html) is None
+
+
+def test_detect_charset_case_insensitive(tmp_path):
+    html = b'<HTML><HEAD><META CHARSET="WINDOWS-1252"><TITLE>Test</TITLE></HEAD><BODY>x</BODY></HTML>'
+    assert flags._detect_charset(html) == "windows-1252"
+
+
+def test_detect_charset_single_quotes(tmp_path):
+    html = b"<html><head><meta charset='latin-1'><title>Test</title></head><body>x</body></html>"
+    assert flags._detect_charset(html) == "latin-1"
+
+
+def test_detect_charset_no_quotes(tmp_path):
+    html = b'<html><head><meta charset=windows-1252><title>Test</title></head><body>x</body></html>'
+    assert flags._detect_charset(html) == "windows-1252"
