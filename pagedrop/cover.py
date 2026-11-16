@@ -142,16 +142,32 @@ def render(jobs: Sequence[Job]) -> bytes:
     if len(rendered) == 1:
         return rendered[0]
 
-    from pypdf import PdfWriter  # imported late so --help stays instant
+    from pypdf import PdfReader, PdfWriter  # imported late so --help stays instant
 
     writer = PdfWriter()
     for data in rendered:
         writer.append(io.BytesIO(data), import_outline=True)
 
+    body_metadata = PdfReader(io.BytesIO(rendered[-1])).metadata
+    cover_metadata = PdfReader(io.BytesIO(rendered[0])).metadata
+
+    def _entries(meta):
+        return {key: meta[key] for key in meta} if meta else {}
+
+    body_entries = _entries(body_metadata)
+    cover_entries = _entries(cover_metadata)
+    substantive = ("/Title", "/Author", "/Subject", "/Keywords")
+    if any(str(body_entries.get(key, "")).strip() for key in substantive):
+        metadata = body_entries
+    elif any(str(cover_entries.get(key, "")).strip() for key in substantive):
+        metadata = cover_entries
+    else:
+        metadata = body_entries or cover_entries
     title = str(jobs[-1].title or "")
     if title:
-        # The last document is the one being titled; the cover only fronts it.
-        writer.add_metadata({"/Title": title})
+        metadata["/Title"] = title
+    if metadata:
+        writer.add_metadata(metadata)
     out = io.BytesIO()
     writer.write(out)
     return out.getvalue()
