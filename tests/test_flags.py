@@ -228,10 +228,43 @@ def test_a_band_font_size_is_refused_by_the_job_too(page, out):
 
 
 def test_a_number_option_still_takes_the_numbers_it_did(page, out):
-    assert flags.build_job(parse([page, out, "--outline-depth", "0"])).outline_depth == 0
+    assert flags.build_job(parse([page, out, "--outline-depth", "1"])).outline_depth == 1
     job = flags.build_job(parse([page, out, "--header-left", "x", "--header-font-size", " 9.5 "]))
     assert job.header.font_size == 9.5
     assert flags.build_job(parse([page, out, "--footer-left", "x", "--footer-font-size", "12"])).footer.font_size == 12.0
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "-100"])
+def test_outline_depth_refuses_zero_and_negative(page, out, value):
+    with pytest.raises(ShimError) as error:
+        parse([page, out, "--outline-depth", value])
+    message = str(error.value)
+    assert "--outline-depth" in message and f"'{value}'" in message
+
+
+def test_outline_depth_refuses_zero_and_negative_in_the_job_too(page, out):
+    """build_job is reachable without the check, so it refuses there as well."""
+    for value in ("0", "-1"):
+        ns = flags.ArgumentParser("wkhtmltopdf").parse_args([page, out, "--outline-depth", value])
+        with pytest.raises(ShimError, match="outline-depth"):
+            flags.build_job(ns)
+
+
+def test_outline_depth_default_still_renders(page, out):
+    """No --outline-depth at all: the default outline renders, not an error."""
+    from pagedrop import engine
+
+    data = engine.render(flags.build_job(parse([page, out])))
+    assert data.startswith(b"%PDF")
+
+
+def test_outline_depth_one_hides_everything_deeper(page, out):
+    from pagedrop import engine
+
+    job = flags.build_job(parse([page, out, "--outline-depth", "1"]))
+    assert job.outline_depth == 1
+    css = engine._outline_css(job)
+    assert any("h2" in rule and "h3" in rule for rule in css)
 
 
 @pytest.mark.parametrize("argv", [["--print-media-type"], ["--disable-smart-shrinking"],

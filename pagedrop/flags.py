@@ -336,21 +336,31 @@ def _same_value(value: object, default: Optional[str]) -> bool:
 # The flags whose value the job reads back as a plain number. Lengths are not
 # among them: ``--margin 2cm`` carries its own unit and parse_length is the one
 # that says whether it is a length. Keyed by dest, and whether it has to be a
-# whole one.
+# whole one. The second element is the smallest value the flag accepts, or
+# None when any number is fine: without it an outline depth of 0 or less
+# reaches the engine unnoticed and the user gets the default outline.
 _NUMERIC_OPTIONS = {
-    "outline_depth": True,
-    "header_font_size": False,
-    "footer_font_size": False,
+    "outline_depth": (True, 1),
+    "header_font_size": (False, None),
+    "footer_font_size": (False, None),
 }
 
 
-def _number(value: object, option: str, whole: bool = False) -> float:
-    """A flag value the engine needs as a number, refused by name when it is not one."""
+def _number(value: object, option: str, whole: bool = False, minimum: Optional[float] = None) -> float:
+    """A flag value the engine needs as a number, refused by name when it is not one.
+
+    ``minimum`` is the floor the value has to clear on top of being a number,
+    so a flag that only makes sense above a threshold refuses 0 and negatives
+    in the same place and the same way it refuses "deep".
+    """
     kind, example = ("a whole number", "4") if whole else ("a number", "12")
     try:
-        return int(str(value).strip()) if whole else float(str(value).strip())
+        result = int(str(value).strip()) if whole else float(str(value).strip())
     except ValueError:
         raise ShimError(f"option '{option}' takes {kind}, e.g. {example}, not '{value}'") from None
+    if minimum is not None and result < minimum:
+        raise ShimError(f"option '{option}' has to be at least {minimum:g}, not '{value}'") from None
+    return result
 
 
 def check_limitations(ns: argparse.Namespace) -> None:
@@ -364,7 +374,8 @@ def check_limitations(ns: argparse.Namespace) -> None:
         if flag.support is DEFAULT_ONLY and not _same_value(value, flag.default):
             raise ShimError(f"option '{flag.name}' is not supported: {flag.limitation}")
         if flag.dest in _NUMERIC_OPTIONS:
-            _number(value, flag.name, _NUMERIC_OPTIONS[flag.dest])
+            whole, minimum = _NUMERIC_OPTIONS[flag.dest]
+            _number(value, flag.name, whole, minimum)
 
 
 def _get(ns: argparse.Namespace, name: str) -> Optional[object]:
@@ -594,7 +605,7 @@ def build_job(ns: argparse.Namespace, document: Optional[bytes] = None) -> Job:
         footer=_band(ns, "footer", unit, ctx, notes),
         title=_get(ns, "title"),
         outline=not _get(ns, "no-outline"),
-        outline_depth=_number(depth, "--outline-depth", whole=True) if depth is not None else None,
+        outline_depth=_number(depth, "--outline-depth", whole=True, minimum=1) if depth is not None else None,
         grayscale=bool(_get(ns, "grayscale")),
         stylesheet=stylesheet,
         log_path=str(_get(ns, "log-path")) if _get(ns, "log-path") is not None else None,
