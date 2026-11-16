@@ -1,5 +1,6 @@
 import io
 import logging
+import os
 import re
 
 import pytest
@@ -188,3 +189,54 @@ def test_meta_charset_windows_1252_still_renders(tmp_path, capsys):
     text = "".join(page_obj.extract_text() or "" for page_obj in PdfReader(str(target)).pages)
     assert "Grüße" in text
     assert "naïf" in text
+
+
+def test_output_missing_parent_exits_cleanly(tmp_path, source, capsys):
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("a regular file where a directory is needed")
+    target = blocker / "nested" / "out.pdf"
+    assert run(tmp_path, [source, target]) == 2
+    err = capsys.readouterr().err
+    assert "cannot write output" in err
+    assert str(target) in err
+    assert "Traceback" not in err
+    assert not target.exists()
+
+
+def test_output_path_is_a_directory_exits_cleanly(tmp_path, source, capsys):
+    target = tmp_path / "out.pdf"
+    target.mkdir()
+    assert run(tmp_path, [source, target]) == 2
+    err = capsys.readouterr().err
+    assert "cannot write output" in err
+    assert str(target) in err
+    assert "Traceback" not in err
+    assert target.is_dir() and not target.is_file()
+
+
+def test_output_unwritable_location_exits_cleanly(tmp_path, source, capsys):
+    if os.geteuid() == 0:
+        pytest.skip("root bypasses permission bits: a directory cannot be made unwritable")
+    readonly = tmp_path / "readonly"
+    readonly.mkdir()
+    readonly.chmod(0o555)
+    target = readonly / "out.pdf"
+    try:
+        assert run(tmp_path, [source, target]) == 2
+        err = capsys.readouterr().err
+        assert "cannot write output" in err
+        assert str(target) in err
+        assert "Traceback" not in err
+    finally:
+        readonly.chmod(0o755)
+    assert not target.exists()
+
+
+def test_valid_output_still_writes_pdf(tmp_path, source, capsys):
+    target = tmp_path / "fresh" / "nested" / "out.pdf"
+    assert run(tmp_path, [source, target]) == 0
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    data = target.read_bytes()
+    assert data.startswith(b"%PDF")
+    assert len(data) > 1000

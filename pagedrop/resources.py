@@ -8,7 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from .errors import ShimError
+from .errors import OutputError, ShimError
 
 TIMEOUT_SECONDS = 30
 
@@ -20,9 +20,12 @@ def write_output(path: str, data: bytes) -> None:
         sys.stdout.buffer.flush()
         return
     directory = os.path.dirname(os.path.abspath(path))
-    os.makedirs(directory, exist_ok=True)
-    with open(path, "wb") as handle:
-        handle.write(data)
+    try:
+        os.makedirs(directory, exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.write(data)
+    except OSError as error:
+        raise OutputError(f"cannot write output '{path}': {error.strerror or error}") from None
 
 
 def read_resource(uri: str, base_dir: str = ".") -> bytes:

@@ -1,6 +1,7 @@
 """Cover pages, checked on the PDF that comes out of the other end."""
 
 import io
+import os
 import re
 
 import pytest
@@ -210,3 +211,47 @@ def test_a_bare_cover_still_gets_its_own_page_box(tmp_path, capsys):
     rendered = read(out).pages
     assert box(rendered[0]) == pytest.approx((419.53, 595.28))
     assert box(rendered[1]) == pytest.approx((595.28, 841.89))
+
+
+def test_cover_output_missing_parent_exits_cleanly(tmp_path, documents, capsys):
+    cover, body = documents
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("a regular file where a directory is needed")
+    target = blocker / "nested" / "out.pdf"
+    assert run("cover", cover, body, target) == 2
+    err = capsys.readouterr().err
+    assert "cannot write output" in err
+    assert str(target) in err
+    assert "Traceback" not in err
+    assert not target.exists()
+
+
+def test_cover_output_path_is_a_directory_exits_cleanly(tmp_path, documents, capsys):
+    cover, body = documents
+    target = tmp_path / "out.pdf"
+    target.mkdir()
+    assert run("cover", cover, body, target) == 2
+    err = capsys.readouterr().err
+    assert "cannot write output" in err
+    assert str(target) in err
+    assert "Traceback" not in err
+    assert target.is_dir() and not target.is_file()
+
+
+def test_cover_output_unwritable_location_exits_cleanly(tmp_path, documents, capsys):
+    if os.geteuid() == 0:
+        pytest.skip("root bypasses permission bits: a directory cannot be made unwritable")
+    cover, body = documents
+    readonly = tmp_path / "readonly"
+    readonly.mkdir()
+    readonly.chmod(0o555)
+    target = readonly / "out.pdf"
+    try:
+        assert run("cover", cover, body, target) == 2
+        err = capsys.readouterr().err
+        assert "cannot write output" in err
+        assert str(target) in err
+        assert "Traceback" not in err
+    finally:
+        readonly.chmod(0o755)
+    assert not target.exists()

@@ -13,7 +13,7 @@ import sys
 from typing import List, Optional, Sequence
 
 from . import cover, engine, flags, resources, server
-from .errors import EncodingError, ShimError
+from .errors import EncodingError, OutputError, ShimError
 from .spec import Job
 
 GROUP_TITLES = {
@@ -215,6 +215,9 @@ def main(argv: Optional[Sequence[str]] = None, prog: Optional[str] = None) -> in
         else:
             job = run(argv, prog)
     except EncodingError as error:
+        sys.stderr.write(f"{prog}: {error}\n")
+        return 2
+    except OutputError as error:
         sys.stderr.write(f"{prog}: {error}\n")
         return 2
     except ShimError as error:

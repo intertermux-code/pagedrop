@@ -17,3 +17,7 @@ class EngineError(ShimError):
 
 class EncodingError(ShimError):
     """An encoding name the runtime does not know."""
+
+
+class OutputError(ShimError):
+    """The rendered PDF cannot be written to the output path; exit 2."""
