@@ -146,3 +146,45 @@ def test_options_file_hash_reaches_the_rendered_page(tmp_path, source):
     assert run(tmp_path, ["--options-file", opts, source, target]) == 0
     text = "".join(page.extract_text() or "" for page in PdfReader(str(target)).pages)
     assert "Total # 5" in text
+
+
+def test_unknown_encoding_exits_2(tmp_path, source, capsys):
+    target = tmp_path / "out.pdf"
+    assert run(tmp_path, [source, target, "--encoding", "not-a-codec"]) == 2
+    err = capsys.readouterr().err
+    assert "unknown encoding 'not-a-codec'" in err
+    assert "Traceback" not in err
+    assert not target.exists()
+
+
+def test_empty_encoding_exits_2(tmp_path, source, capsys):
+    target = tmp_path / "out.pdf"
+    assert run(tmp_path, [source, target, "--encoding", ""]) == 2
+    err = capsys.readouterr().err
+    assert "unknown encoding ''" in err
+    assert "Traceback" not in err
+    assert not target.exists()
+
+
+def test_valid_encoding_exits_0(tmp_path, capsys):
+    page = tmp_path / "latin.html"
+    page.write_bytes("<html><body><p>Grüße, naïf</p></body></html>".encode("windows-1252"))
+    target = tmp_path / "out.pdf"
+    assert run(tmp_path, [page, target, "--encoding", "windows-1252"]) == 0
+    assert target.exists() and target.stat().st_size > 0
+    assert capsys.readouterr().err == ""
+
+
+def test_meta_charset_windows_1252_still_renders(tmp_path, capsys):
+    page = tmp_path / "meta.html"
+    page.write_bytes(
+        '<html><head><meta charset="windows-1252"><title>Test</title></head>'
+        '<body><p>Grüße, naïf</p></body></html>'.encode("windows-1252")
+    )
+    target = tmp_path / "out.pdf"
+    assert run(tmp_path, [page, target]) == 0
+    assert target.exists() and target.stat().st_size > 0
+    assert capsys.readouterr().err == ""
+    text = "".join(page_obj.extract_text() or "" for page_obj in PdfReader(str(target)).pages)
+    assert "Grüße" in text
+    assert "naïf" in text

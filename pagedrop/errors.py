@@ -13,3 +13,7 @@ class ShimError(Exception):
 
 class EngineError(ShimError):
     """The print engine failed on a document the flags were fine with."""
+
+
+class EncodingError(ShimError):
+    """An encoding name the runtime does not know."""

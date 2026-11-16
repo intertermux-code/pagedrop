@@ -4,7 +4,7 @@ import pytest
 from pypdf import PdfReader
 
 from pagedrop import flags
-from pagedrop.errors import ShimError
+from pagedrop.errors import EncodingError, ShimError
 
 
 def parse(argv):
@@ -381,3 +381,17 @@ def test_detect_charset_single_quotes(tmp_path):
 def test_detect_charset_no_quotes(tmp_path):
     html = b'<html><head><meta charset=windows-1252><title>Test</title></head><body>x</body></html>'
     assert flags._detect_charset(html) == "windows-1252"
+
+def test_unknown_encoding_is_refused(page, out):
+    with pytest.raises(EncodingError, match="unknown encoding 'not-a-codec'"):
+        flags.build_job(parse([page, out, "--encoding", "not-a-codec"]))
+
+
+def test_empty_encoding_is_refused(page, out):
+    with pytest.raises(EncodingError, match="unknown encoding ''"):
+        flags.build_job(parse([page, out, "--encoding", ""]))
+
+
+def test_valid_encoding_still_builds_job(page, out):
+    job = flags.build_job(parse([page, out, "--encoding", "latin-1"]))
+    assert job is not None

@@ -155,8 +155,10 @@ Anything not on that list is refused: with an explanation where the two engines
 genuinely differ, and as an unknown option where the flag does not exist at
 all. A value that has to be a number and is not one — `--outline-depth deep`,
 `--header-font-size big` — is refused the same way, naming the option and the
-value it was given: exit 1 on the command line, `400` from the service. That is
-the right outcome while you are grepping for stragglers.
+value it was given: exit 1 on the command line, `400` from the service. An
+unknown or empty `--encoding` value is refused with exit 2 on the command line,
+naming the value. That is the right outcome while you are grepping for
+stragglers.
 
 ### Header and footer variables
 
@@ -432,7 +434,7 @@ $ .venv/bin/wkhtmltopdf cover examples/cover.html examples/invoice.html out/pack
 $ .venv/bin/pagedrop serve --port 8080 --verbose
 ```
 
-The suite has 244 tests. It renders real PDFs and reads them back with `pypdf`: page counts,
+The suite has 251 tests. It renders real PDFs and reads them back with `pypdf`: page counts,
 per-page footer numbering, margins that change pagination, metadata, outline
 entries and the absence of RGB operators after `--grayscale`. The server is
 tested over HTTP with `urllib` and `http.client` against a live service on a
@@ -447,8 +449,9 @@ If the input HTML declares a charset via `<meta charset="...">` or
 encoding is used to decode the input bytes. An explicit `--encoding` flag
 overrides the declaration. If no charset is declared and no `--encoding` is
 given, the input is decoded as UTF-8 with replacement characters for invalid
-sequences — the same behaviour as before. An unknown or undecodable declared
-charset falls back to UTF-8 with a warning on stderr.
+sequences — the same behaviour as before. An unknown or empty `--encoding`
+value is refused with a clean error and exit 2. An unknown or undecodable
+declared charset falls back to UTF-8 with a warning on stderr.
 
 
 ## Releasing

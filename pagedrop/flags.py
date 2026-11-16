@@ -15,6 +15,7 @@ Support levels
 from __future__ import annotations
 
 import argparse
+import codecs
 import os
 import re
 import shlex
@@ -23,7 +24,7 @@ from datetime import datetime
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from . import templating
-from .errors import ShimError
+from .errors import EncodingError, ShimError
 from .fragments import extract_fragment
 from .resources import read_resource
 from .spec import Band, Job
@@ -532,6 +533,10 @@ def build_job(ns: argparse.Namespace, document: Optional[bytes] = None) -> Job:
     # if neither, default to UTF-8 with errors=replace (preserving current behaviour).
     if explicit_encoding is not None:
         encoding = str(explicit_encoding)
+        try:
+            codecs.lookup(encoding)
+        except LookupError:
+            raise EncodingError(f"unknown encoding '{encoding}'") from None
     else:
         detected = _detect_charset(data)
         if detected is not None:
